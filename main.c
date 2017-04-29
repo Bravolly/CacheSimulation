@@ -13,7 +13,7 @@ struct Trace_ {
     char *instr;//[9]
     char type;
     char *dataAcc;//[10];
-    int byteScanned;
+    char byteScanned;
     char *dataDisp;//[10];
 };
 
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
         }
 
         j = 0;
-        trace.dataAcc = malloc(sizeof(char) * (10 - sizeOffset);
+        trace.dataAcc = malloc(sizeof(char) * (10 - sizeOffset));
         while (buffer[i] != ' ') {
             trace.dataAcc[j] = buffer[i];
             i++;
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
             j++;
         }
 
-        printf("%s %c %s %d %s\n", trace.instr);
+        printf("%s %c %s %c %s\n", trace.instr, trace.type, trace.dataAcc, trace.byteScanned, trace.dataDisp);
     }
 
     return 0;
