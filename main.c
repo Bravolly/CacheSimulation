@@ -6,6 +6,8 @@
 #define BLOCKSIZE 16    // Block size for cache in bytes
 #define BITADDRESS32 32 // 32-bit memory address
 
+/* Function Prototype */
+
 /* Structure of a trace line */
 typedef struct Trace_{
     char *instr;        // [9] address of instruction
@@ -23,8 +25,8 @@ typedef struct Block_ {
 
 typedef struct Cache_ {
     Block_ *cacheMap;
-    int offsetSize;
     int nBlocks;
+    int offsetSize;
     int indexSize;
     int tagSize;
     int nRead;
@@ -41,6 +43,7 @@ typedef struct Cache_ {
 int main(int argc, char **argv) {
     int i,j;
     int sizeOffset;
+    long tempAddress;
     FILE *file;
     char *buffer = malloc(sizeof(char) * LINELENGTH);
     Trace_ *trace = malloc(sizeof(Trace_));
@@ -59,7 +62,7 @@ int main(int argc, char **argv) {
     printf("Cache Simulator - System 1\n"
             "direct-mapped, writeback, size = %s\n", argv[2]);
 
-    /* Setup calculation for Cache */
+    /* Calculation setup for Cache */
     myCache->offsetSize = (int) log2(BLOCKSIZE);
     myCache->nBlocks = (atoi(argv[2]) * 1024) / BLOCKSIZE;
     myCache->cacheMap = malloc(sizeof(Block_) * myCache->nBlocks);
@@ -137,6 +140,14 @@ int main(int argc, char **argv) {
         }
 
         printf("%s %c %s %c %s\n", trace->instr, trace->type, trace->dataAcc, trace->byteScanned, trace->dataDisp);
+
+        tempAddress = strtol(trace->dataAcc, NULL, 16);
+        printf("address: %ld, %#lx\n", tempAddress, tempAddress);
+        tempAddress = tempAddress >> myCache->offsetSize;
+        printf("address: %ld, %#lx\n", tempAddress, tempAddress);
+        tempAddress = tempAddress & ((int) pow(2, myCache->indexSize) - 1);
+        printf("address: %ld, %#lx\n", tempAddress, tempAddress);
+        printf("%s\n", myCache->cacheMap->data);
     }
 
     return 0;
