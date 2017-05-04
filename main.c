@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define LINELENGTH 40   // Max size of one line in the trace
-#define BLOCKSIZE 16    // Block size for cache in bytes
-#define BITADDRESS32 32 // 32-bit memory address
-
-/* Function Prototype */
+#define LINE_LENGTH 40   // Max size of one line in the trace
+#define BLOCK_SIZE 16    // Block size for cache in bytes
+#define BIT_ADDRESS_32 32 // 32-bit memory address
+#define MISS_PENALTY 80
 
 /* Structure of a trace line */
 typedef struct Trace_{
@@ -19,8 +18,8 @@ typedef struct Trace_{
 
 typedef struct Block_ {
     int valid;
+    int dirty;
     long tag;
-    long data;
 } Block_;
 
 typedef struct Cache_ {
@@ -38,14 +37,19 @@ typedef struct Cache_ {
     int dirtyWriteMiss;
     int bytesRead;
     int bytesWrite;
+    int cycleRead;
+    int cycleWrite;
 } Cache_;
+
+/* Function Prototype */
+long convert(Trace_*, Cache_*);
 
 int main(int argc, char **argv) {
     int i,j;
     int sizeOffset;
     long tempAddress;
     FILE *file;
-    char *buffer = malloc(sizeof(char) * LINELENGTH);
+    char *buffer = malloc(sizeof(char) * LINE_LENGTH);
     Trace_ *trace = malloc(sizeof(Trace_));
     Cache_ *myCache = malloc (sizeof(Cache_));
 
@@ -60,24 +64,39 @@ int main(int argc, char **argv) {
 
     /* Title */
     printf("Cache Simulator - System 1\n"
-            "direct-mapped, writeback, size = %s\n", argv[2]);
+            "direct-mapped, writeback, size = %sKB\n", argv[2]);
 
     /* Calculation setup for Cache */
-    myCache->offsetSize = (int) log2(BLOCKSIZE);
-    myCache->nBlocks = (atoi(argv[2]) * 1024) / BLOCKSIZE;
+    myCache->offsetSize = (int) log2(BLOCK_SIZE);
+    myCache->nBlocks = (atoi(argv[2]) * 1024) / BLOCK_SIZE;
     myCache->cacheMap = malloc(sizeof(Block_) * myCache->nBlocks);
     myCache->indexSize = (int) log2(myCache->nBlocks);
-    myCache->tagSize = BITADDRESS32 - (myCache->indexSize + myCache->offsetSize);
+    myCache->tagSize = BIT_ADDRESS_32 - (myCache->indexSize + myCache->offsetSize);
 
-    /* Set initial valid bit to 0 */
+    /* Set initial to 0 */
+    myCache->nRead = 0;
+    myCache->nWrite = 0;
+    myCache->readMiss = 0;
+    myCache->writeMiss = 0;
+    myCache->dataMiss = 0;
+    myCache->dirtyReadMiss = 0;
+    myCache->dirtyWriteMiss = 0;
+    myCache->bytesRead = 0;
+    myCache->bytesWrite = 0;
+    myCache->cycleRead = 0;
+    myCache->cycleWrite = 0;
     for (int k = 0; k < myCache->nBlocks; ++k) {
         myCache->cacheMap[k].valid = 0;
+        myCache->cacheMap[k].dirty = 0;
     }
 
+/*
     printf("%d bits offset\n"
             "%d blocks\n"
             "%d bits index\n"
             "%d bits tag\n", myCache->offsetSize, myCache->nBlocks, myCache->indexSize, myCache->tagSize);
+*/
+
 
     /* Read file */
     file = fopen(argv[1], "r");
@@ -86,7 +105,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    while (fgets(buffer, LINELENGTH, file) != NULL) {
+    while (fgets(buffer, LINE_LENGTH, file) != NULL) {
         i = 0;
         j = 0;
 
@@ -139,8 +158,9 @@ int main(int argc, char **argv) {
             j++;
         }
 
-        printf("%s %c %s %c %s\n", trace->instr, trace->type, trace->dataAcc, trace->byteScanned, trace->dataDisp);
+        //printf("%s %c %s %c %s\n", trace->instr, trace->type, trace->dataAcc, trace->byteScanned, trace->dataDisp);
 
+        /*
         tempAddress = strtol(trace->dataAcc, NULL, 16);
         printf("address: %ld, %#lx\n", tempAddress, tempAddress);
         tempAddress = tempAddress >> myCache->offsetSize;
@@ -148,7 +168,68 @@ int main(int argc, char **argv) {
         tempAddress = tempAddress & ((int) pow(2, myCache->indexSize) - 1);
         printf("address: %ld, %#lx\n", tempAddress, tempAddress);
         printf("%s\n", myCache->cacheMap->data);
+         */
+
+        convert(trace, myCache);
     }
 
+    printf("loads %d stores %d total %d\n"
+                   "rmiss %d wmiss %d total %d\n"
+                   "dirty rmiss %d dirty wmiss %d\n"
+                   "bytes read %d bytes written %d\n"
+                   "read time %d write time %d\n"
+                   "total time %d", myCache->nRead, myCache->nWrite, myCache->nRead + myCache->nWrite,
+           myCache->readMiss, myCache->writeMiss, myCache->readMiss + myCache->writeMiss,
+           myCache->dirtyReadMiss, myCache->dirtyWriteMiss,
+           myCache->bytesRead, myCache->bytesWrite,
+           myCache->cycleRead, myCache->cycleWrite,
+           myCache->cycleRead + myCache->cycleWrite);
+
     return 0;
+}
+
+long convert(Trace_ *current, Cache_ *yourCache) {
+    long index = strtol(current->dataAcc, NULL, 16);
+    index >>= yourCache->offsetSize;
+    long tag = index >> yourCache->indexSize;
+    index &= ((int) pow(2, yourCache->indexSize) - 1);
+
+    if (current->type == 'R') {
+        yourCache->nRead++;
+        yourCache->bytesRead += current->byteScanned;
+        if (yourCache->cacheMap[index].valid) {
+            if (tag == yourCache->cacheMap[index].tag) {
+                yourCache->cycleRead++;
+            } else {
+                yourCache->cacheMap[index].tag = tag;
+                yourCache->cacheMap[index].dirty = 0;
+                yourCache->cycleRead = yourCache->cycleRead + 1 + MISS_PENALTY;
+                yourCache->readMiss++;
+            }
+        } else {
+            yourCache->cacheMap[index].tag = tag;
+            yourCache->cacheMap[index].dirty = 0;
+            yourCache->cycleRead = yourCache->cycleRead + 1 + MISS_PENALTY;
+            yourCache->readMiss++;
+        }
+    } else {
+        yourCache->nWrite++;
+        yourCache->bytesWrite += current->byteScanned;
+        if (yourCache->cacheMap[index].valid) {
+            if (tag == yourCache->cacheMap[index].tag) {
+                yourCache->cacheMap[index].dirty = 1;
+                yourCache->cycleWrite++;
+            } else {
+                yourCache->cacheMap[index].tag = tag;
+                yourCache->cacheMap[index].dirty = 1;
+                yourCache->cycleWrite = yourCache->cycleWrite + 1 + MISS_PENALTY;
+                yourCache->writeMiss++;
+            }
+        } else {
+            yourCache->cacheMap[index].tag = tag;
+            yourCache->cacheMap[index].dirty = 1;
+            yourCache->cycleWrite = yourCache->cycleWrite + 1 + MISS_PENALTY;
+            yourCache->writeMiss++;
+        }
+    }
 }
