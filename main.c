@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define LINE_LENGTH 40   // Max size of one line in the trace
-#define BLOCK_SIZE 16    // Block size for cache in bytes
+#define LINE_LENGTH 40    // Max size of one line in the trace
+#define BLOCK_SIZE 16     // Block size for cache in bytes
 #define BIT_ADDRESS_32 32 // 32-bit memory address
-#define MISS_PENALTY 80
+#define MISS_PENALTY 80   // cycles for a penalty
 
 /* Structure of a trace line */
 typedef struct Trace_{
@@ -187,6 +187,13 @@ int main(int argc, char **argv) {
            myCache->cycleRead + myCache->cycleWrite,
            (float) (myCache->readMiss + myCache->writeMiss)/(myCache->nRead + myCache->nWrite));
 
+    free(buffer);
+    free(trace->dataAcc);
+    free(trace->dataDisp);
+    free(trace->instr);
+    free(myCache->cacheMap);
+    free(myCache);
+
     return 0;
 }
 
@@ -195,25 +202,30 @@ int main(int argc, char **argv) {
  * @abstract    Runs the current trace line through the cache process.
  * @discussion  This function converts the address of the data accessed
  *              and splits it to the tag and index. Then goes through
- *              the cache process and collects statistics.
- * @param       current    The current line on the trace.
- * @param       yourCache  The cache to be worked on.
+ *              the cache process and 
+ * @param       current    The weight of the chicken.
+ * @param       yourCache     The sauce for cooking. Could be a
+ *                        NULL pointer.
  * @result      A pointer to the cache.
 */
 Cache_* convert(Trace_ *current, Cache_ *yourCache) {
     long index = strtol(current->dataAcc, NULL, 16);
+    //printf("%#lx", index);
     index >>= yourCache->offsetSize;
     long tag = index >> yourCache->indexSize;
     index &= ((int) pow(2, yourCache->indexSize) - 1);
 
+    //printf("\n%d %ld %#lx %#lx\n", (int) index, index, tag, index);
+
+    //printf("%c\n", current->type);
+
     if (current->type == 'R') {
         yourCache->nRead++;
-        //yourCache->bytesRead += (current->byteScanned - '0');
-        if (yourCache->cacheMap[index].valid == 1) {
-            if (tag == yourCache->cacheMap[index].tag) {
-                yourCache->bytesRead += (current->byteScanned - '0');
+        if (yourCache->cacheMap[index].valid == 1) {                                    //Read
+            if (tag == yourCache->cacheMap[index].tag) {                                //Case 1
+                //yourCache->bytesRead += (current->byteScanned - '0');
                 yourCache->cycleRead++;
-            } else {
+            } else {                                                                    //Case 2b
                 yourCache->bytesRead += (current->byteScanned - '0');
                 yourCache->cacheMap[index].tag = tag;
                 yourCache->cacheMap[index].dirty = 0;
@@ -221,7 +233,7 @@ Cache_* convert(Trace_ *current, Cache_ *yourCache) {
                 yourCache->dirtyReadMiss++;
                 yourCache->readMiss++;
             }
-        } else {
+        } else {                                                                        //Case 2a
             yourCache->bytesRead += (current->byteScanned - '0');
             yourCache->cacheMap[index].valid = 1;
             yourCache->cacheMap[index].tag = tag;
@@ -229,22 +241,21 @@ Cache_* convert(Trace_ *current, Cache_ *yourCache) {
             yourCache->cycleRead = yourCache->cycleRead + 1 + MISS_PENALTY;
             yourCache->readMiss++;
         }
-    } else {
+    } else if (current->type == 'W') {
         yourCache->nWrite++;
-        //yourCache->bytesWrite += (current->byteScanned - '0');
-        if (yourCache->cacheMap[index].valid == 1) {
-            if (tag == yourCache->cacheMap[index].tag) {
-                yourCache->bytesWrite += (current->byteScanned - '0');
+        if (yourCache->cacheMap[index].valid == 1) {                                    //Write
+            if (tag == yourCache->cacheMap[index].tag) {                                //Case 1
+                //yourCache->bytesWrite += (current->byteScanned - '0');
                 yourCache->cacheMap[index].dirty = 1;
                 yourCache->cycleWrite++;
-            } else {
+            } else {                                                                    //Case 2b
                 yourCache->bytesWrite += (current->byteScanned - '0');
                 yourCache->cacheMap[index].tag = tag;
                 yourCache->cacheMap[index].dirty = 1;
                 yourCache->cycleWrite = yourCache->cycleWrite + 1 + MISS_PENALTY;
                 yourCache->writeMiss++;
             }
-        } else {
+        } else {                                                                        //Case 2a
             yourCache->bytesWrite += (current->byteScanned - '0');
             yourCache->cacheMap[index].valid = 1;
             yourCache->cacheMap[index].tag = tag;
