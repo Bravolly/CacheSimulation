@@ -42,7 +42,7 @@ typedef struct Cache_ {
 } Cache_;
 
 /* Function Prototype */
-long convert(Trace_*, Cache_*);
+Cache_* convert(Trace_*, Cache_*); //takes current line of trace and runs through the cache
 
 int main(int argc, char **argv) {
     int i,j;
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     Cache_ *myCache = malloc (sizeof(Cache_));
 
     /* Error check for correct number of arguments */
-    if (argc > 3) {
+    if (argc == 1 || argc > 3) {
         fprintf(stderr, "Error: Incorrect number of arguments\n"
                 "Usage: dir tracefile cachesize [-v ic1 ic2]");
         exit(1);
@@ -85,9 +85,9 @@ int main(int argc, char **argv) {
     myCache->bytesWrite = 0;
     myCache->cycleRead = 0;
     myCache->cycleWrite = 0;
-    for (int k = 0; k < myCache->nBlocks; ++k) {
-        myCache->cacheMap[k].valid = 0;
-        myCache->cacheMap[k].dirty = 0;
+    for (i = 0; i < myCache->nBlocks; ++i) {
+        myCache->cacheMap[i].valid = 0;
+        myCache->cacheMap[i].dirty = 0;
     }
 
 /*
@@ -178,17 +178,29 @@ int main(int argc, char **argv) {
                    "dirty rmiss %d dirty wmiss %d\n"
                    "bytes read %d bytes written %d\n"
                    "read time %d write time %d\n"
-                   "total time %d", myCache->nRead, myCache->nWrite, myCache->nRead + myCache->nWrite,
-           myCache->readMiss, myCache->writeMiss, myCache->readMiss + myCache->writeMiss,
+                   "total time %d\n"
+                   "miss rate %f\n", myCache->nRead, myCache->nWrite, myCache->nRead + myCache->nWrite,
+           myCache->readMiss, myCache->writeMiss, myCache->dataMiss = myCache->readMiss + myCache->writeMiss,
            myCache->dirtyReadMiss, myCache->dirtyWriteMiss,
            myCache->bytesRead, myCache->bytesWrite,
            myCache->cycleRead, myCache->cycleWrite,
-           myCache->cycleRead + myCache->cycleWrite);
+           myCache->cycleRead + myCache->cycleWrite,
+           (float) (myCache->readMiss + myCache->writeMiss)/(myCache->nRead + myCache->nWrite));
 
     return 0;
 }
 
-long convert(Trace_ *current, Cache_ *yourCache) {
+/*!
+ * @function    convert
+ * @abstract    Runs the current trace line through the cache process.
+ * @discussion  This function converts the address of the data accessed
+ *              and splits it to the tag and index. Then goes through
+ *              the cache process and collects statistics.
+ * @param       current    The current line on the trace.
+ * @param       yourCache  The cache to be worked on.
+ * @result      A pointer to the cache.
+*/
+Cache_* convert(Trace_ *current, Cache_ *yourCache) {
     long index = strtol(current->dataAcc, NULL, 16);
     index >>= yourCache->offsetSize;
     long tag = index >> yourCache->indexSize;
@@ -196,17 +208,22 @@ long convert(Trace_ *current, Cache_ *yourCache) {
 
     if (current->type == 'R') {
         yourCache->nRead++;
-        yourCache->bytesRead += current->byteScanned;
-        if (yourCache->cacheMap[index].valid) {
+        //yourCache->bytesRead += (current->byteScanned - '0');
+        if (yourCache->cacheMap[index].valid == 1) {
             if (tag == yourCache->cacheMap[index].tag) {
+                yourCache->bytesRead += (current->byteScanned - '0');
                 yourCache->cycleRead++;
             } else {
+                yourCache->bytesRead += (current->byteScanned - '0');
                 yourCache->cacheMap[index].tag = tag;
                 yourCache->cacheMap[index].dirty = 0;
-                yourCache->cycleRead = yourCache->cycleRead + 1 + MISS_PENALTY;
+                yourCache->cycleRead = yourCache->cycleRead + 1 + (2 * MISS_PENALTY);
+                yourCache->dirtyReadMiss++;
                 yourCache->readMiss++;
             }
         } else {
+            yourCache->bytesRead += (current->byteScanned - '0');
+            yourCache->cacheMap[index].valid = 1;
             yourCache->cacheMap[index].tag = tag;
             yourCache->cacheMap[index].dirty = 0;
             yourCache->cycleRead = yourCache->cycleRead + 1 + MISS_PENALTY;
@@ -214,22 +231,29 @@ long convert(Trace_ *current, Cache_ *yourCache) {
         }
     } else {
         yourCache->nWrite++;
-        yourCache->bytesWrite += current->byteScanned;
-        if (yourCache->cacheMap[index].valid) {
+        //yourCache->bytesWrite += (current->byteScanned - '0');
+        if (yourCache->cacheMap[index].valid == 1) {
             if (tag == yourCache->cacheMap[index].tag) {
+                yourCache->bytesWrite += (current->byteScanned - '0');
                 yourCache->cacheMap[index].dirty = 1;
                 yourCache->cycleWrite++;
             } else {
+                yourCache->bytesWrite += (current->byteScanned - '0');
                 yourCache->cacheMap[index].tag = tag;
                 yourCache->cacheMap[index].dirty = 1;
                 yourCache->cycleWrite = yourCache->cycleWrite + 1 + MISS_PENALTY;
                 yourCache->writeMiss++;
             }
         } else {
+            yourCache->bytesWrite += (current->byteScanned - '0');
+            yourCache->cacheMap[index].valid = 1;
             yourCache->cacheMap[index].tag = tag;
             yourCache->cacheMap[index].dirty = 1;
-            yourCache->cycleWrite = yourCache->cycleWrite + 1 + MISS_PENALTY;
+            yourCache->cycleWrite = yourCache->cycleWrite + 1 + (2 * MISS_PENALTY);
+            yourCache->dirtyWriteMiss++;
             yourCache->writeMiss++;
         }
     }
+
+    return yourCache;
 }
